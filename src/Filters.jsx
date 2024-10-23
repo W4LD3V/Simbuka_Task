@@ -26,11 +26,12 @@ const Filters = ({ filterGender, setFilterGender, searchTerm, setSearchTerm }) =
 
       <div className="mb-6">
         <input
-          type="text"
-          placeholder="Search by name or last name"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="border border-gray-300 rounded-md p-2 w-full"
+            id="search-input" 
+            type="text"
+            placeholder="Search by name or last name"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="border border-gray-300 rounded-md p-2 w-full"
         />
       </div>
     </div>

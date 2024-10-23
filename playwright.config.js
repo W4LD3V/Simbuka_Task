@@ -1,4 +1,7 @@
 import { devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 export default {
   testDir: './tests',
@@ -17,10 +20,6 @@ export default {
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
+    }
   ],
 };

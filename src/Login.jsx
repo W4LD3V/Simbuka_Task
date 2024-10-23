@@ -10,14 +10,10 @@ export default function Login({ setToken }) {
     const adminUsername = import.meta.env.VITE_ADMIN_USERNAME;
     const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
 
-    // Check if  credentials match .env
     if (username === adminUsername && password === adminPassword) {
       const token = 'admin-token-12345';
       
-      // Store the token
       localStorage.setItem('token', token);
-      
-      // Update the app's token state
       setToken(token);
     } else {
       alert('Invalid credentials. Please try again.');

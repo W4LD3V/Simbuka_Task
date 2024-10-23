@@ -1,87 +1,121 @@
 import React, { useState, useEffect } from 'react';
-import { fetchData } from './services/api';
+import { fetchAllData } from './services/api';
 import Filters from './Filters';
 import Table from './Table';
 import Pagination from './Pagination';
 import Dialog from './Dialog';
 import Login from './Login';
 
+const CACHE_DURATION = 600000;
+const CACHE_KEY = 'employeeData';
+const CACHE_EXPIRATION_KEY = 'employeeDataExpiration';
+
 const App = () => {
-  const [data, setData] = useState([]);
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [filterGender, setFilterGender] = useState('');
-  const [sortColumn, setSortColumn] = useState('firstName');
+  const [allData, setAllData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPageNumber, setCurrentPageNumber] = useState(1);
-  const [dataToDisplay, setDataToDisplay] = useState([]);
-  const TOTAL_VALUES_PER_PAGE = 3;
+  const [filterGender, setFilterGender] = useState('');
   const [selectedRow, setSelectedRow] = useState(null);
+  const [sortOrder, setSortOrder] = useState('asc');
+  const [sortColumn, setSortColumn] = useState('firstName');
   const dialogRef = React.createRef();
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const [totalPages, setTotalPages] = useState(1);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
 
-  // Loading the data using a helper function only when auth token is available
+  // BROWSER STORAGE LOGIC
+  const isCacheValid = () => {
+    const expiration = localStorage.getItem(CACHE_EXPIRATION_KEY);
+    return expiration && new Date().getTime() < Number(expiration);
+  };
+
+  // API FETCHING LOGIC
+  const loadData = async () => {
+    if (isCacheValid()) {
+      const cachedData = JSON.parse(localStorage.getItem(CACHE_KEY));
+      setAllData(cachedData);
+      setFilteredData(cachedData);
+    } else {
+      const result = await fetchAllData();
+      if (result) {
+        setAllData(result);
+        setFilteredData(result);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+        localStorage.setItem(
+          CACHE_EXPIRATION_KEY,
+          (new Date().getTime() + CACHE_DURATION).toString()
+        );
+      }
+    }
+  };
+
+  // AUTHENTICATION
   useEffect(() => {
     if (token) {
-      const loadData = async () => {
-        const result = await fetchData();
-        if (result) {
-          setData(result);
-        }
-      };
-
       loadData();
     }
   }, [token]);
 
-  // Table records sorting logic
-  const sortData = (column) => {
-    const newSortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-    setSortOrder(newSortOrder);
-    setSortColumn(column);
+  // SORTING LOGIC
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      const newSortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      setSortOrder(newSortOrder);
+    } else {
+      setSortColumn(column);
+      setSortOrder('asc');
+    }
+  };
 
-    const sortedData = [...data].sort((a, b) => {
-      if (a[column] < b[column]) return newSortOrder === 'asc' ? -1 : 1;
-      if (a[column] > b[column]) return newSortOrder === 'asc' ? 1 : -1;
+  // FILTER AND SORTING
+  useEffect(() => {
+    let filtered = allData;
+
+    if (filterGender) {
+      filtered = filtered.filter((item) => item.gender === filterGender);
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (item) =>
+          item.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.lastName.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    const sortedData = [...filtered].sort((a, b) => {
+      if (a[sortColumn] < b[sortColumn]) return sortOrder === 'asc' ? -1 : 1;
+      if (a[sortColumn] > b[sortColumn]) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
 
-    setData(sortedData);
-  };
+    setFilteredData(sortedData);
+    setCurrentPage(0);
+  }, [filterGender, searchTerm, allData, sortColumn, sortOrder]);
 
-  // Filtering logic for gender and search input
-  const filteredData = data.filter((item) => {
-    const matchesGender = filterGender === '' || item.gender === filterGender;
-    const matchesSearch =
-      item.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.lastName.toLowerCase().includes(searchTerm.toLowerCase());
+  const paginatedData = filteredData.slice(
+    currentPage * pageSize,
+    (currentPage + 1) * pageSize
+  );
 
-    return matchesGender && matchesSearch;
-  });
+  const totalPagesCalculated = Math.ceil(filteredData.length / pageSize);
 
-  const totalPages = Math.ceil(filteredData.length / TOTAL_VALUES_PER_PAGE);
-
-  // Pagination logic
   useEffect(() => {
-    const start = (currentPageNumber - 1) * TOTAL_VALUES_PER_PAGE;
-    const end = currentPageNumber * TOTAL_VALUES_PER_PAGE;
-    const updatedData = filteredData.slice(start, end);
-  
-    if (JSON.stringify(updatedData) !== JSON.stringify(dataToDisplay)) {
-      setDataToDisplay(updatedData);
-    }
-  }, [currentPageNumber, filteredData]);
+    setTotalPages(totalPagesCalculated);
+  }, [totalPagesCalculated]);
 
   const goOnPrevPage = () => {
-    if (currentPageNumber > 1) setCurrentPageNumber(currentPageNumber - 1);
+    if (currentPage > 0) setCurrentPage(currentPage - 1);
   };
 
   const goOnNextPage = () => {
-    if (currentPageNumber < totalPages) setCurrentPageNumber(currentPageNumber + 1);
+    if (currentPage < totalPages - 1) setCurrentPage(currentPage + 1);
   };
 
-  const handleSelectChange = (e) => setCurrentPageNumber(Number(e.target.value));
+  const handleSelectChange = (e) => setPageSize(Number(e.target.value));
 
-  // Dialog box handling
   const openDialog = (row) => {
     setSelectedRow(row);
     dialogRef.current.showModal();
@@ -92,16 +126,46 @@ const App = () => {
     setSelectedRow(null);
   };
 
-  // Login redirect if no token
+  // LOGOUT
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+  };
+
+  // DARK MODE
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    const theme = !darkMode ? 'dark' : 'light';
+    document.documentElement.classList.toggle('dark', !darkMode);
+    localStorage.setItem('theme', theme);
+  };
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   if (!token) {
     return <Login setToken={setToken} />;
   }
 
-  // Loading screen
-  if (data.length === 0) return <div className="text-center mt-10">Loading...</div>;
+  if (allData.length === 0) return <div className="text-center mt-10">Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
+    <div className={`min-h-screen ${darkMode ? 'dark' : ''} bg-gray-100 dark:bg-gray-900 dark:text-white p-8`}>
+      <div className="flex justify-between mb-4">
+        <button onClick={toggleDarkMode} className="bg-fuchsia-800 text-white px-4 py-2 rounded hover:bg-fuchsia-950 transition">
+          {darkMode ? 'Light Mode' : 'Dark Mode'}
+        </button>
+
+        <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition">
+          Logout
+        </button>
+      </div>
+
       <Filters
         filterGender={filterGender}
         setFilterGender={setFilterGender}
@@ -109,20 +173,36 @@ const App = () => {
         setSearchTerm={setSearchTerm}
       />
 
+      <div className="flex justify-between mb-4">
+        <div className="flex items-center">
+          <label htmlFor="pageSize" className="mr-2">Records per page:</label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={handleSelectChange}
+            className="border border-gray-300 rounded-md p-2"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
+      </div>
+
       <Table
-        dataToDisplay={dataToDisplay}
-        sortData={sortData}
+        dataToDisplay={paginatedData}
+        sortData={handleSort}
         sortColumn={sortColumn}
         sortOrder={sortOrder}
         openDialog={openDialog}
       />
 
       <Pagination
-        currentPageNumber={currentPageNumber}
+        currentPageNumber={currentPage}
         totalPages={totalPages}
         goOnPrevPage={goOnPrevPage}
         goOnNextPage={goOnNextPage}
-        handleSelectChange={handleSelectChange}
       />
 
       <Dialog selectedRow={selectedRow} dialogRef={dialogRef} closeDialog={closeDialog} />
